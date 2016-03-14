@@ -1,0 +1,592 @@
+= Oh My js!
+
+Server Side JS utilities.
+
+Oh My js! provides an integration with some javascript utilities avoiding to dig into javascript stack (Gulp, npm, ...).
+
+It generally provides 3 flavors of each integration:
+
+- service: simple java class with a `String transform(String)` method
+- runner: a main to let you `"build"` (transpile/render) your resources before optimizing the runtime. The options are passed using `--` syntax. Ex: `--option1 valueOfOption1`.
+All runners share these options:
+
+|===
+| Name | Description
+|source| input base folder
+|target| output base folder
+|include| `Pattern` applied on the name of the file (not the path). If matching the file is transformed.
+|exclude| `Pattern` applied on the name of the file (not the path). If matching the file is not transformed.
+|===
+
+
+- a servlet filter: allowing to have hot reloading during development with most of Servlet servers like Tomcat/TomEE/... Options are passed as filter init parameter or system property when prefix with the filter prefix (check dedicated doc).
+All filters share these parameters:
+
+|===
+| Name | Description
+|active| is the filter used (when associated with programmatic registration allows to deactivate it)
+|dev| is in dev mode (ie files are checked for updates)
+|sources| where are sources (default to ./webapp) for dev mode
+|cache| where to cache generated file on the disk (default to null, ie no local disk caching)
+|excludes| which request URI are ignored (`Pattern`)
+|includes| which request URI are not ignored (`Pattern`)
+|===
+
+NOTE: these filter delegates to get the underlying resource which means in the default case you need the `default` servlet (file resources)
+but you can use it with JSP generation or any other web technology.
+
+TIP: `com.github.rmannibucau.ohmyjs.servlet.DelegateFilterConfig` allows to override easily the configuration as shown in samples and is provided with ohmyjs.jar.
+
+== BabelJS
+
+
+Oh My js! integrates with babeljs https://babeljs.io[babeljs] to provide `es6` (`emacs2015`) features.
+
+Here are its 3 flavors:
+
+=== com.github.rmannibucau.ohmyjs.service.BabelJsService
+
+A simple java class wrapping babeljs https://babeljs.io/docs/learn-es2015/[es6] features:
+
+[source,java]
+----
+boolean dev = false; // is the generation in dev mode
+String moduleLoader = "amd"; // requirejs friendly
+BabelJsService service = new BabelJsService(dev, moduleLoader)
+
+String es6code="...";
+
+System.out.println(service.transform(es6code));
+----
+
+Module value can be one of (see https://babeljs.io/docs/plugins/):
+
+- amd
+- commonjs
+- systemjs
+- umd
+
+
+=== com.github.rmannibucau.ohmyjs.runner.BabelJsRunner
+
+Additional options are:
+
+
+|===
+| Name | Description
+|dev| see service
+|module| see service
+|===
+
+The runner will take all .js and .es6 in the source folder and convert it to a .js in target folder.
+
+=== com.github.rmannibucau.ohmyjs.servlet.BabelJsServerTranspiler
+
+A servlet Filter handling babeljs integration. Additional configuration is:
+
+|===
+| Name | Description
+|templates| path to a folder where templates are relatively to the source path (default templates)
+|templateExtension| template extension, default html
+|mapToEs6| should a .js be remapped to a .es6 resource (/foo.js will actually use /foo.es6)
+|module| same as for service, defaul to `amd`
+|===
+
+==== Programmatic registration example
+
+[source,java]
+----
+@WebFilter("/js/app/*")
+public class MyBabelJsFilter extends BabelJsServerTranspiler {
+    @Override
+    public void init(final FilterConfig filterConfig) throws ServletException {
+        // custom config
+        final Map<String, String> overrides = new HashMap<>();
+        final boolean isDev = "dev".equalsIgnoreCase(System.getProperty("my.environment"));
+        overrides.put("dev", Boolean.toString(isDev));
+        overrides.put("active", Boolean.toString(isDev));
+        overrides.put("templates", "../template");
+        overrides.put("templateExtension", "jade");
+        overrides.put("sources", ofNullable(filterConfig.getServletContext().getRealPath("")).orElse("src/main/webapp"));
+        overrides.put("module", "amd");
+        overrides.put("mapToEs6", "true");
+        overrides.put("cache", "target/cache");
+        overrides.put("includes", ".*\\.js");
+
+        // just delegate then
+        super.init(new DelegateFilterConfig(filterConfig, overrides));
+    }
+}
+----
+
+This servlet will match incoming js request (includes) on `/js/app/*` and will map them on the corresponding es6 resource. In dev mode
+the jade templates named as the js file will be checked as well. If your naming convention between your template and
+js file is more complicated just override `getAlternativeSourceFile(path)` method to return the template file.
+
+==== Web.xml registration
+
+[source,xml]
+----
+<filter>
+  <filter-name>babeljs</filter-name>
+  <filter-class>com.github.rmannibucau.ohmyjs.servlet.BabelJsServerTranspiler</filter-class>
+  <init-param>
+    <param-name>dev</param-name>
+    <param-value>true</param-value>
+  </init-param>
+  <init-param>
+    <param-name>active</param-name>
+    <param-value>true</param-value>
+  </init-param>
+  <init-param>
+    <param-name>templates</param-name>
+    <param-value>../template</param-value>
+  </init-param>
+  <init-param>
+    <param-name>templateExtension</param-name>
+    <param-value>jade</param-value>
+  </init-param>
+  <init-param>
+    <param-name>sources</param-name>
+    <param-value>/opt/base/project/src/main/webapp</param-value>
+  </init-param>
+  <init-param>
+    <param-name>mapToEs6</param-name>
+    <param-value>true</param-value>
+  </init-param>
+  <init-param>
+    <param-name>module</param-name>
+    <param-value>amd</param-value>
+  </init-param>
+  <init-param>
+    <param-name>cache</param-name>
+    <param-value>/opt/base/project/target/cache</param-value>
+  </init-param>
+  <init-param>
+    <param-name>includes</param-name>
+    <param-value>.*\.js</param-value>
+  </init-param>
+</filter>
+<filter-mapping>
+  <filter-name>babeljs</filter-name>
+  <url-pattern>/js/app/*</url-pattern>
+</filter-mapping>
+----
+
+== Jade
+
+
+Oh My js! integrates with http://jade-lang.com/[jade].
+
+Here are its 3 flavors:
+
+=== com.github.rmannibucau.ohmyjs.service.JadeService
+
+A simple java class wrapping jade standalone templating feature (without variables since it is designed to be used with a js framework like Angular 1/2, VueJS...):
+
+[source,java]
+----
+JadeService service = new JadeService()
+
+String jadeTemplate="...";
+
+System.out.println(service.transform(jadeTemplate));
+----
+
+
+=== com.github.rmannibucau.ohmyjs.runner.JadeRunner
+
+The runner will take all .jade and .html in the source folder and convert it to a .html in target folder.
+
+=== com.github.rmannibucau.ohmyjs.servlet.JadeServerRenderer
+
+
+|===
+| Name | Description
+|mapToJade| should a .html be remapped to a .jade resource (/foo.jade will actually use /foo.html)
+|===
+
+==== Programmatic registration example
+
+[source,java]
+----
+@WebFilter("/js/app/template/*")
+public class JadeSetup extends JadeServerRenderer {
+    @Override
+    public void init(final FilterConfig filterConfig) throws ServletException {
+        final Map<String, String> overrides = new HashMap<>();
+        final boolean isDev = "dev".equalsIgnoreCase(System.getProperty("environment"));
+        overrides.put("dev",  Boolean.toString(isDev));
+        overrides.put("active",  Boolean.toString(isDev));
+        overrides.put("sources", ofNullable(filterConfig.getServletContext().getRealPath("")).orElse("src/main/webapp"));
+        overrides.put("mapToJade", "true");
+        overrides.put("cache", "target/cache");
+        overrides.put("includes", ".*\\.html");
+        super.init(new DelegateFilterConfig(filterConfig, overrides));
+    }
+}
+
+----
+
+This servlet will match incoming html request (includes) on `/js/app/template/*` and will map them on the corresponding jade resource.
+
+==== Web.xml registration
+
+[source,xml]
+----
+<filter>
+  <filter-name>jade</filter-name>
+  <filter-class>com.github.rmannibucau.ohmyjs.servlet.JadeServerRenderer</filter-class>
+  <init-param>
+    <param-name>dev</param-name>
+    <param-value>true</param-value>
+  </init-param>
+  <init-param>
+    <param-name>active</param-name>
+    <param-value>true</param-value>
+  </init-param>
+  <init-param>
+    <param-name>sources</param-name>
+    <param-value>/opt/base/project/src/main/webapp</param-value>
+  </init-param>
+  <init-param>
+    <param-name>mapToJade</param-name>
+    <param-value>true</param-value>
+  </init-param>
+  <init-param>
+    <param-name>cache</param-name>
+    <param-value>/opt/base/project/target/cache</param-value>
+  </init-param>
+  <init-param>
+    <param-name>includes</param-name>
+    <param-value>.*\.html</param-value>
+  </init-param>
+</filter>
+<filter-mapping>
+  <filter-name>jade</filter-name>
+  <url-pattern>/js/app/template/*</url-pattern>
+</filter-mapping>
+----
+
+
+== Build tools
+
+Runner are plain mains so it is easy to integrate them in a build. For instance for Maven you an use:
+
+The project layout is:
+
+[source]
+----
+.
+`- src
+   `- main
+        `- webapp
+              `- js
+                  `- app
+                      |- *.es6
+                       `- template
+                             `- *.jade
+----
+
+The build will render jade and es6 files in `target/frontend` using the same layout (js/app/...).
+
+[source,xml]
+----
+<plugin> <!-- render jade and es6 files -->
+  <groupId>org.codehaus.mojo</groupId>
+  <artifactId>exec-maven-plugin</artifactId>
+  <version>1.4.0</version>
+  <executions>
+    <execution>
+      <id>render-jade-templates</id>
+      <phase>prepare-package</phase>
+      <goals>
+        <goal>java</goal>
+      </goals>
+      <configuration>
+        <mainClass>com.github.rmannibucau.ohmyjs.runner.JadeRunner</mainClass>
+        <arguments>
+          <argument>--source</argument>
+          <argument>${project.basedir}/src/main/webapp/js/app/template</argument>
+          <argument>--target</argument>
+          <argument>${project.build.directory}/frontend/js/app/template</argument>
+        </arguments>
+      </configuration>
+    </execution>
+    <execution>
+      <id>transpile-es6</id>
+      <phase>prepare-package</phase>
+      <goals>
+        <goal>java</goal>
+      </goals>
+      <configuration>
+        <mainClass>com.github.rmannibucau.ohmyjs.runner.BabelJsRunner</mainClass>
+        <arguments>
+          <argument>--source</argument>
+          <argument>${project.basedir}/src/main/webapp/js/app</argument>
+          <argument>--target</argument>
+          <argument>${project.build.directory}/frontend/js/app</argument>
+        </arguments>
+      </configuration>
+    </execution>
+  </executions>
+</plugin>
+----
+
+=== Full Pipeline for a requirejs application
+
+To optimize a requirejs application you can use these steps:
+
+- create the exploded war
+- remove the resources you don't need (typicaly the one we'll aggregate/uglify)
+- generate the .html/.js files with babel and jade runners
+- run r.js to optimize the application using this folder as root and linking external deps in the config
+
+[source,xml]
+----
+<plugin>
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-war-plugin</artifactId>
+  <version>2.6</version>
+  <executions>
+    <execution>
+      <id>prepare-war</id>
+      <phase>prepare-package</phase>
+      <goals>
+        <goal>exploded</goal>
+      </goals>
+    </execution>
+    <execution>
+      <id>default-war</id>
+      <phase>package</phase>
+      <goals>
+        <goal>war</goal>
+      </goals>
+      <configuration> <!-- we dont want to overwrite already modified files -->
+        <warSourceExcludes>**/*</warSourceExcludes>
+      </configuration>
+    </execution>
+  </executions>
+  <configuration>
+    <failOnMissingWebXml>false</failOnMissingWebXml>
+  </configuration>
+</plugin>
+<plugin> <!-- cleanup files which will not be delivered -->
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-clean-plugin</artifactId>
+  <version>3.0.0</version>
+  <executions>
+    <execution>
+      <id>remove-optimized-js</id>
+      <phase>prepare-package</phase>
+      <goals>
+        <goal>clean</goal>
+      </goals>
+      <configuration>
+        <filesets>
+          <fileset>
+            <directory>${project.build.directory}/${project.build.finalName}/js/app</directory>
+          </fileset>
+          <fileset>
+            <directory>${project.build.directory}/${project.build.finalName}/js/lib</directory>
+            <excludes>
+              <exclude>**/require.min.js</exclude>
+              <!-- maybe some others depending yoru app -->
+            </excludes>
+          </fileset>
+        </filesets>
+        <excludeDefaultDirectories>true</excludeDefaultDirectories>
+      </configuration>
+    </execution>
+  </executions>
+</plugin>
+<plugin> <!-- render jade and es6 files, Note: yes we could "hack" it and reuse the cache of tests, better to just regenerate it properly -->
+  <groupId>org.codehaus.mojo</groupId>
+  <artifactId>exec-maven-plugin</artifactId>
+  <version>1.4.0</version>
+  <executions>
+    <execution>
+      <id>render-jade-templates</id>
+      <phase>prepare-package</phase>
+      <goals>
+        <goal>java</goal>
+      </goals>
+      <configuration>
+        <mainClass>com.github.rmannibucau.ohmyjs.runner.JadeRunner</mainClass>
+        <arguments>
+          <argument>--source</argument>
+          <argument>${project.basedir}/src/main/webapp/js/app/template</argument>
+          <argument>--target</argument>
+          <argument>${project.build.directory}/frontend/js/app/template</argument>
+        </arguments>
+      </configuration>
+    </execution>
+    <execution>
+      <id>transpile-es6</id>
+      <phase>prepare-package</phase>
+      <goals>
+        <goal>java</goal>
+      </goals>
+      <configuration>
+        <mainClass>com.github.rmannibucau.ohmyjs.runner.BabelJsRunner</mainClass>
+        <arguments>
+          <argument>--source</argument>
+          <argument>${project.basedir}/src/main/webapp/js/app</argument>
+          <argument>--target</argument>
+          <argument>${project.build.directory}/frontend/js/app</argument>
+        </arguments>
+      </configuration>
+    </execution>
+  </executions>
+</plugin>
+<plugin> <!-- optimize requirejs app, needs a buildconfig.js in the root directory, depends your application -->
+  <groupId>com.github.bringking</groupId>
+  <artifactId>requirejs-maven-plugin</artifactId>
+  <version>2.0.4</version>
+  <executions>
+    <execution>
+      <id>r.js</id>
+      <phase>prepare-package</phase>
+      <goals>
+        <goal>optimize</goal>
+      </goals>
+      <configuration>
+        <runner>nashorn</runner>
+        <configFile>${project.basedir}/buildconfig.js</configFile>
+        <filterConfig>true</filterConfig>
+      </configuration>
+    </execution>
+  </executions>
+</plugin>
+----
+
+The `buildconfig.js` file can look like:
+
+[source,javascript]
+----
+({
+    name: 'boot', // the main entry point of the application
+    baseUrl: '${project.build.directory}/frontend/js/app', // we generated there with our runners
+    out: '${project.build.directory}/${project.build.finalName}/js/app/app.min.js',
+    optimize: 'uglify',
+    paths: { // the dependencies/external libs linked in src/main/webapp directly cause we aggregate them in app.min.js
+        'Vue': '../../../../src/main/webapp/js/lib/vue/vue.min',
+        'VueRouter': '../../../../src/main/webapp/js/lib/vue/vue-router.min',
+        'VueResource': '../../../../src/main/webapp/js/lib/vue/vue-resource.min',
+        'boostrapNotify': '../../../../src/main/webapp/js/lib/bootstrap/bootstrap-notify.min',
+        'bootstrap-datetimepicker': '../../../../src/main/webapp/js/lib/bootstrap/bootstrap-datetimepicker.min',
+        'moment': '../../../../src/main/webapp/js/lib/moment/moment.min',
+        'text': '../../../../src/main/webapp/js/lib/requirejs/text',
+        // these deps are kepts like that
+        'highlightjs': 'empty:',
+        'jquery': 'empty:',
+        'bootstrap': 'empty:',
+        'ckeditor': 'empty:'
+    },
+    shim: { // dependencies as usual with requirejs
+        'VueRouter': ['Vue'],
+        'VueResource': ['Vue'],
+        'bootstrap': ['jquery'],
+        'boostrapNotify': ['bootstrap', 'jquery'],
+        'bootstrap-datetimepicker': ['bootstrap', 'moment']
+    }
+})
+----
+
+Then you just need to modify a bit the main part of your application to use the bundle we just created. Personally I use a JSP to switch
+depending `environment` system property but any other way works (even a small groovy script linked with maven groovy plugin):
+
+[source,java]
+----
+<% if (!"dev".equals(System.getProperty("environment", "prod"))) { /* load the bundle */ %>
+require.config({
+    baseUrl: 'js/app',
+    paths: { // external libs not integrated to the bundle
+        'jquery': '../../theme/startbootstrap-scrolling-nav-1.0.4/js/jquery',
+        'bootstrap': '../../theme/startbootstrap-scrolling-nav-1.0.4/js/bootstrap.min',
+        'ckeditor': '../lib/ckeditor/ckeditor',
+        'highlightjs': '../lib/ckeditor/plugins/codesnippet/lib/highlight/highlight.pack'
+    },
+    shim: {
+        'VueRouter': ['Vue'],
+        'VueResource': ['Vue'],
+        'bootstrap': ['jquery'],
+        'boostrapNotify': ['bootstrap', 'jquery'],
+        'bootstrap-datetimepicker': ['bootstrap', 'moment']
+    }
+});
+define('main', ['jquery', 'bootstrap', 'app.min'], function () {
+    require(['boot']); // now our bundle is loaded we can require the actual boot module
+});
+require(['main']);
+<% } else { /* dev/test */%>
+require.config({
+    baseUrl: 'js/app',
+    paths: {
+        'text': '../lib/requirejs/text',
+        'Vue': '../lib/vue/vue.min',
+        'VueRouter': '../lib/vue/vue-router.min',
+        'VueResource': '../lib/vue/vue-resource.min',
+        'jquery': '../../theme/startbootstrap-scrolling-nav-1.0.4/js/jquery',
+        'bootstrap': '../../theme/startbootstrap-scrolling-nav-1.0.4/js/bootstrap.min',
+        'boostrapNotify': '../lib/bootstrap/bootstrap-notify.min',
+        'bootstrap-datetimepicker': '../lib/bootstrap/bootstrap-datetimepicker.min',
+        'moment': '../lib/moment/moment.min',
+        'ckeditor': '../lib/ckeditor/ckeditor',
+        'highlightjs': '../lib/ckeditor/plugins/codesnippet/lib/highlight/highlight.pack'
+    },
+    shim: {
+        'VueRouter': ['Vue'],
+        'VueResource': ['Vue'],
+        'bootstrap': ['jquery'],
+        'boostrapNotify': ['bootstrap', 'jquery'],
+        'bootstrap-datetimepicker': ['bootstrap', 'moment']
+    },
+    waitSeconds: 0 // no timeout during tests
+});
+require(['bootstrap', 'test', 'boot']); // we can directly load the boot module since all modules are exploded (no bundle)
+<% } %>
+----
+
+== Notes
+
+Babeljs and Jade integrations are using nashorn and therefore need Java >= 8 to work. The load of the original script is
+slow and it is recommended to not do it for each resource since the filters support hot reloading.
+
+Also abusing of fast development tools like tomee-embedded-maven-plugin to avoid to have a F5 solution is highly recommended
+and only optimize the files when you are done.
+
+Here is a potential configuration working with such a setup:
+
+[source,xml]
+----
+<plugin> <!-- dev server => mvn tomee-embedded:run -->
+  <groupId>org.apache.tomee.maven</groupId>
+  <artifactId>tomee-embedded-maven-plugin</artifactId>
+  <version>${tomee.version}</version>
+  <configuration>
+    <context>/${project.artifactId}</context>
+    <classpathAsWar>true</classpathAsWar>
+    <containerProperties>
+      <!-- we don't need a 100% EE server yet so switch off few things slowing down the boot or polluting logs -->
+      <openejb.environment.default>false</openejb.environment.default>
+      <tomee.skip-tld>false</tomee.skip-tld>
+      <environment>dev</rblog.environment>
+    </containerProperties>
+  </configuration>
+</plugin>
+----
+
+Then to check it works in optimized mode run `mvn package` and you can use tomee plugin (not embedded) to validate it:
+
+[source,xml]
+----
+<plugin> <!-- just to be able to test in not embedded mode before deployments => mvn tomee:run -->
+  <groupId>org.apache.tomee.maven</groupId>
+  <artifactId>tomee-maven-plugin</artifactId>
+  <version>${tomee.version}</version>
+  <configuration>
+    <context>/${project.artifactId}</context>
+  </configuration>
+</plugin>
+----
