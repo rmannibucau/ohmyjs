@@ -571,7 +571,7 @@ Here is a potential configuration working with such a setup:
       <!-- we don't need a 100% EE server yet so switch off few things slowing down the boot or polluting logs -->
       <openejb.environment.default>false</openejb.environment.default>
       <tomee.skip-tld>false</tomee.skip-tld>
-      <environment>dev</rblog.environment>
+      <environment>dev</environment>
     </containerProperties>
   </configuration>
 </plugin>
