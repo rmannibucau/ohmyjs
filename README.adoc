@@ -92,6 +92,8 @@ A servlet Filter handling babeljs integration. Additional configuration is:
 |module| same as for service, defaul to `amd`
 |===
 
+Prefix: babeljs
+
 ==== Programmatic registration example
 
 [source,java]
@@ -205,6 +207,8 @@ The runner will take all .jade and .html in the source folder and convert it to 
 | Name | Description
 |mapToJade| should a .html be remapped to a .jade resource (/foo.jade will actually use /foo.html)
 |===
+
+Prefix: jade
 
 ==== Programmatic registration example
 
