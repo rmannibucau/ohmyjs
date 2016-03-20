@@ -122,9 +122,11 @@ public abstract class BaseFilter implements Filter {
                     }
 
                     final String value = new String(baos.toByteArray(), StandardCharsets.UTF_8);
-                    cache.putIfAbsent(path, value);
                     if (isDev) {
+                        cache.put(path, value);
                         lastModifieds.put(path, lastModified);
+                    } else {
+                        cache.putIfAbsent(path, value);
                     }
                     response.getWriter().write(value);
                     return;
@@ -191,10 +193,12 @@ public abstract class BaseFilter implements Filter {
             final String result = service.transform(source);
             response.getWriter().write(result);
             response.flushBuffer();
-            cache.putIfAbsent(path, result);
             if (isDev) {
                 logger.info("Re-transformed " + requestURI);
+                cache.put(path, result);
                 lastModifieds.put(path, lastModified);
+            } else {
+                cache.putIfAbsent(path, result);
             }
             if (cacheRoot != null) {
                 final File cacheFile = new File(cacheRoot, path);
