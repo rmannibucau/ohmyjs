@@ -10,7 +10,7 @@
 
   <groupId>com.github.rmannibucau</groupId>
   <artifactId>ohmyjs</artifactId>
-  <version>0.0.2</version>
+  <version>0.0.3-SNAPSHOT</version>
   <name>RManniBucau :: Oh My JavaScript</name>
   <description>Javascript Goodies on Server Side (Jade and ES6 - babeljs - support on server side and with a Java main(String[]))</description>
 
